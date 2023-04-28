@@ -1,0 +1,14 @@
+[
+    {
+        "model": "levelupapi.game",
+        "pk": 1,
+        "fields": {
+            "title": 1,
+            "maker": "Me",
+            "number_of_players": 5,
+            "skill_level": 2,
+            "type": 1,
+            "creator": 1
+        }
+    }
+]
