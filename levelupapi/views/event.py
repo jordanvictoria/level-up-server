@@ -5,6 +5,9 @@ from rest_framework.response import Response
 from rest_framework import serializers, status
 from levelupapi.models import Event, Gamer, Game
 from rest_framework.decorators import action
+from django.db.models import Count
+from django.db.models import Q
+from django.core.exceptions import ValidationError
 
 
 class EventView(ViewSet):
@@ -16,6 +19,9 @@ class EventView(ViewSet):
         Returns:
             Response -- JSON serialized game type
         """
+
+        #   tried to annotate onto one resource, failed
+        #  events = Event.objects.annotate(attendees_count=Count('attendees'))
 
         event = Event.objects.get(pk=pk)
         serializer = EventSerializer(event)
@@ -30,17 +36,30 @@ class EventView(ViewSet):
         """
 
         events = Event.objects.all()
-        
+
+        # events = Event.objects.annotate(attendees_count=Count('attendees'))
 
         if "game" in request.query_params:
             game_id = request.query_params['game']
             events = events.filter(game=game_id)
 
-        # Set the `joined` property on every event
-        for event in events:
-            # Check to see if the gamer is in the attendees list on the event
-            gamer = Gamer.objects.get(user=request.auth.user)
-            event.joined = gamer in event.attendees.all()
+        # Find a particular gamer
+        # gamer = Gamer.objects.get(id=1)
+
+        # Event.objects.filter(
+        #     Q(organizer=gamer) &
+        #     Q(game__gamer=gamer)
+        # )
+
+        gamer = Gamer.objects.get(user=request.auth.user)
+
+        events = Event.objects.annotate(
+            attendees_count=Count('attendees'),
+            joined=Count(
+                'attendees',
+                filter=Q(attendees=gamer)
+            )
+        )
 
         serializer = EventSerializer(events, many=True)
         return Response(serializer.data)
@@ -52,17 +71,13 @@ class EventView(ViewSet):
             Response -- JSON serialized game instance
         """
         gamer = Gamer.objects.get(user=request.auth.user)
-        game = Game.objects.get(pk=request.data["game"])
+        # game = Game.objects.get(pk=request.data["game"])
+        # serializer.save(game=game)
 
-        event = Event.objects.create(
-            description=request.data["description"],
-            date=request.data["date"],
-            time=request.data["time"],
-            game=game,
-            organizer=gamer
-        )
-        serializer = EventSerializer(event)
-        return Response(serializer.data)
+        serializer = CreateEventSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save(gamer=gamer)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
 
     def update(self, request, pk):
         """Handle PUT requests for an event
@@ -132,11 +147,17 @@ class EventGameSerializer(serializers.ModelSerializer):
 class EventSerializer(serializers.ModelSerializer):
     """JSON serializer for game types
     """
+    attendees_count = serializers.IntegerField(default=None)
     organizer = EventOrganizerSerializer(many=False)
     attendees = EventAttendeeSerializer(many=True)
     game = EventGameSerializer(many=False)
 
     class Meta:
         model = Event
-        fields = ('id', 'description', 'date', 'time', 'game', 'organizer', 'attendees', 'joined')
-        depth = 1
+        fields = ('id', 'description', 'date', 'time', 'game', 'organizer', 'attendees', 'joined', 'attendees_count')
+        depth = 2
+
+class CreateEventSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Event
+        fields = ['id', 'description', 'date', 'time', 'game']
