@@ -7,11 +7,16 @@ from levelupapi.models import Game, Gamer, GameType
 from django.db.models import Count
 from django.db.models import Q
 from django.core.exceptions import ValidationError
+from rest_framework.permissions import DjangoModelPermissions
+from levelupapi.permission import UserCreateGameOrDelete
+
 
 
 
 class GameView(ViewSet):
     """Level up game types view"""
+    permission_classes = [ UserCreateGameOrDelete ]
+    queryset = Game.objects.none()
 
     def retrieve(self, request, pk):
         """Handle GET requests for single games
@@ -26,8 +31,7 @@ class GameView(ViewSet):
             return Response(serializer.data)
 
         except Game.DoesNotExist as ex:
-            return Response(status=status.HTTP_404_NOT_FOUND)
-
+            return Response({'message': ex.args[0]}, status=status.HTTP_404_NOT_FOUND)
 
     def list(self, request):
         """Handle GET requests to get all games
@@ -100,6 +104,7 @@ class GameView(ViewSet):
 
         game_type = GameType.objects.get(pk=request.data["type"])
         game.type = game_type
+        self.check_object_permissions(request,game)
         game.save()
 
         return Response(None, status=status.HTTP_204_NO_CONTENT)
@@ -108,6 +113,7 @@ class GameView(ViewSet):
         """Handle PUT requests for an event"""
         
         game = Game.objects.get(pk=pk)
+        self.check_object_permissions(request,game)
         game.delete()
         return Response(None, status=status.HTTP_204_NO_CONTENT)
 
